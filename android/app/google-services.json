@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "7022116150",
+    "project_id": "quick-post-34a8c",
+    "storage_bucket": "quick-post-34a8c.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:7022116150:android:1682075099a58b43984797",
+        "android_client_info": {
+          "package_name": "com.example.quickpost"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA3HsPjw-KKiVtYoUwDZL1PNLDZnTsuHjQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
