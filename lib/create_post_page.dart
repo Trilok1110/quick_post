@@ -1,10 +1,12 @@
 import 'dart:io';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'components/qp_button.dart';
 import 'services/firestore_service.dart';
+import 'utils/image_utils.dart';
 
 class CreatePostPage extends StatefulWidget {
   const CreatePostPage({super.key});
@@ -41,46 +43,213 @@ class _CreatePostPageState extends State<CreatePostPage> {
 
   Future<void> _pickImage() async {
     try {
-      final ImagePicker picker = ImagePicker();
-      final XFile? image = await picker.pickImage(
-        source: ImageSource.gallery,
+      // Check if image picker is available
+      if (!ImageUtils.isImagePickerAvailable) {
+        _showSnackbar('Image picker not available on this platform');
+        return;
+      }
+
+      // Show source selection dialog
+      final ImageSource? source = await ImageUtils.showImageSourceDialog(context);
+      if (source == null) return;
+      
+      // Pick image with validation
+      final File? imageFile = await ImageUtils.pickImageWithValidation(
+        source: source,
         maxWidth: 1920,
         maxHeight: 1920,
         imageQuality: 80,
       );
 
-      if (image != null) {
+      if (imageFile != null) {
         setState(() {
-          _selectedImage = File(image.path);
+          _selectedImage = imageFile;
         });
+        _showSnackbar('Image selected successfully! 📸', isError: false);
       }
     } catch (e) {
-      _showSnackbar('Failed to pick image: $e');
+      print('Error picking image: $e');
+      _showSnackbar('Failed to pick image: ${e.toString()}');
     }
   }
 
   Future<String?> _uploadImage(File imageFile) async {
-    try {
-      final user = FirebaseAuth.instance.currentUser;
-      if (user == null) return null;
+    const int maxRetries = 3;
+    int retryCount = 0;
+    
+    while (retryCount < maxRetries) {
+      try {
+        final user = FirebaseAuth.instance.currentUser;
+        if (user == null) {
+          throw Exception('User not authenticated');
+        }
 
-      final fileName = 'posts/${user.uid}/${DateTime.now().millisecondsSinceEpoch}.jpg';
-      final storageRef = FirebaseStorage.instance.ref().child(fileName);
-      
-      final uploadTask = storageRef.putFile(imageFile);
-      
-      // Show upload progress if needed
-      uploadTask.snapshotEvents.listen((TaskSnapshot snapshot) {
-        final progress = snapshot.bytesTransferred / snapshot.totalBytes;
-        print('Upload progress: ${(progress * 100).toStringAsFixed(1)}%');
-      });
+        // Verify file exists and is readable
+        if (!await imageFile.exists()) {
+          throw Exception('Image file does not exist at path: ${imageFile.path}');
+        }
 
-      final snapshot = await uploadTask;
-      final downloadUrl = await snapshot.ref.getDownloadURL();
-      
-      return downloadUrl;
-    } catch (e) {
-      throw Exception('Failed to upload image: $e');
+        // Read and validate file
+        final fileBytes = await imageFile.readAsBytes();
+        if (fileBytes.isEmpty) {
+          throw Exception('Image file is empty or corrupted');
+        }
+        
+        print('📤 Starting upload attempt ${retryCount + 1}/$maxRetries');
+        print('📊 File size: ${fileBytes.length} bytes');
+        print('🖼️ File path: ${imageFile.path}');
+
+        // Create unique filename with proper extension
+        final extension = imageFile.path.split('.').last.toLowerCase();
+        final timestamp = DateTime.now().millisecondsSinceEpoch;
+        final fileName = 'posts/${user.uid}/${timestamp}_${retryCount}.$extension';
+        
+        print('🎯 Upload destination: $fileName');
+        
+        final storageRef = FirebaseStorage.instance.ref().child(fileName);
+        
+        // Set metadata for better file handling
+        final metadata = SettableMetadata(
+          contentType: _getContentType(extension),
+          customMetadata: {
+            'uploadedBy': user.uid,
+            'uploadedAt': DateTime.now().toIso8601String(),
+            'originalName': imageFile.path.split('/').last,
+            'fileSize': fileBytes.length.toString(),
+          },
+        );
+        
+        // Use putData instead of putFile for better reliability
+        final uploadTask = storageRef.putData(fileBytes, metadata);
+        
+        // Track upload progress with better error handling
+        StreamSubscription? progressSubscription;
+        bool uploadCompleted = false;
+        
+        progressSubscription = uploadTask.snapshotEvents.listen(
+          (TaskSnapshot snapshot) {
+            final progress = snapshot.bytesTransferred / snapshot.totalBytes;
+            print('⬆️ Upload progress: ${(progress * 100).toStringAsFixed(1)}%');
+            
+            switch (snapshot.state) {
+              case TaskState.running:
+                // Upload in progress
+                break;
+              case TaskState.paused:
+                print('⏸️ Upload paused');
+                break;
+              case TaskState.success:
+                print('✅ Upload completed successfully');
+                uploadCompleted = true;
+                break;
+              case TaskState.canceled:
+                print('❌ Upload was canceled');
+                break;
+              case TaskState.error:
+                print('❌ Upload error in stream');
+                break;
+            }
+          },
+          onError: (error) {
+            print('❌ Upload stream error: $error');
+          },
+        );
+
+        // Wait for upload to complete with timeout
+        final snapshot = await uploadTask.timeout(
+          const Duration(minutes: 5),
+          onTimeout: () {
+            progressSubscription?.cancel();
+            uploadTask.cancel();
+            throw Exception('Upload timed out after 5 minutes');
+          },
+        );
+        
+        // Clean up subscription
+        await progressSubscription?.cancel();
+        
+        // Verify upload state
+        print('🔍 Final upload state: ${snapshot.state}');
+        print('📊 Bytes transferred: ${snapshot.bytesTransferred}/${snapshot.totalBytes}');
+        
+        if (snapshot.state != TaskState.success) {
+          throw Exception('Upload failed with state: ${snapshot.state}');
+        }
+        
+        if (snapshot.bytesTransferred != snapshot.totalBytes) {
+          throw Exception('Upload incomplete: ${snapshot.bytesTransferred}/${snapshot.totalBytes} bytes');
+        }
+        
+        // Wait a moment for Firebase to process the file
+        await Future.delayed(const Duration(milliseconds: 500));
+        
+        // Get download URL with retry
+        String downloadUrl;
+        try {
+          downloadUrl = await snapshot.ref.getDownloadURL();
+        } catch (e) {
+          print('⚠️ First download URL attempt failed: $e');
+          // Wait and retry
+          await Future.delayed(const Duration(seconds: 1));
+          downloadUrl = await snapshot.ref.getDownloadURL();
+        }
+        
+        // Verify the URL is valid
+        if (downloadUrl.isEmpty || !downloadUrl.startsWith('https://')) {
+          throw Exception('Invalid download URL: $downloadUrl');
+        }
+        
+        print('🎉 Image uploaded successfully!');
+        print('🔗 Download URL: $downloadUrl');
+        
+        return downloadUrl;
+        
+      } on FirebaseException catch (e) {
+        print('🔥 Firebase error (attempt ${retryCount + 1}): ${e.code} - ${e.message}');
+        
+        // Check if this is a retryable error
+        final retryableCodes = ['storage/retry-limit-exceeded', 'storage/network-error', 'storage/unknown'];
+        
+        if (retryableCodes.contains(e.code) && retryCount < maxRetries - 1) {
+          retryCount++;
+          print('🔄 Retrying upload in ${retryCount * 2} seconds...');
+          await Future.delayed(Duration(seconds: retryCount * 2));
+          continue; // Retry the upload
+        } else {
+          throw Exception('Firebase Storage error: ${e.message} (${e.code})');
+        }
+      } catch (e) {
+        print('💥 Upload error (attempt ${retryCount + 1}): $e');
+        
+        if (retryCount < maxRetries - 1) {
+          retryCount++;
+          print('🔄 Retrying upload in ${retryCount * 2} seconds...');
+          await Future.delayed(Duration(seconds: retryCount * 2));
+          continue; // Retry the upload
+        } else {
+          throw Exception('Failed to upload image after $maxRetries attempts: $e');
+        }
+      }
+    }
+    
+    throw Exception('Upload failed after $maxRetries attempts');
+  }
+
+  String _getContentType(String extension) {
+    switch (extension.toLowerCase()) {
+      case 'jpg':
+      case 'jpeg':
+        return 'image/jpeg';
+      case 'png':
+        return 'image/png';
+      case 'gif':
+        return 'image/gif';
+      case 'webp':
+        return 'image/webp';
+      case 'bmp':
+        return 'image/bmp';
+      default:
+        return 'image/jpeg';
     }
   }
 
@@ -94,30 +263,47 @@ class _CreatePostPageState extends State<CreatePostPage> {
       
       // Upload image if selected
       if (_selectedImage != null) {
+        print('Uploading image before creating post...');
+        
+        // Verify file still exists
+        if (!await _selectedImage!.exists()) {
+          throw Exception('Selected image file no longer exists');
+        }
+        
         imageUrl = await _uploadImage(_selectedImage!);
+        print('Image upload completed: $imageUrl');
       }
 
       // Create post
-      await _firestoreService.createPost(
+      print('Creating post with content: ${_contentController.text.trim()}');
+      final postId = await _firestoreService.createPost(
         content: _contentController.text.trim(),
         imageUrl: imageUrl,
       );
+      print('Post created successfully with ID: $postId');
 
-      _showSnackbar('Post created successfully! 🚀', isError: false);
-      
-      // Clear form
-      _contentController.clear();
-      setState(() {
-        _selectedImage = null;
-      });
+      if (mounted) {
+        _showSnackbar('Post created successfully! 🚀', isError: false);
+        
+        // Clear form
+        _contentController.clear();
+        setState(() {
+          _selectedImage = null;
+        });
 
-      // Navigate back to home
-      Navigator.pop(context, true); // Return true to indicate post was created
+        // Navigate back to home
+        Navigator.pop(context, true);
+      }
       
     } catch (e) {
-      _showSnackbar('Failed to create post: $e');
+      print('Error creating post: $e');
+      if (mounted) {
+        _showSnackbar('Failed to create post: ${e.toString()}');
+      }
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 

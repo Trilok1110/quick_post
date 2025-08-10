@@ -66,6 +66,10 @@ class FirestoreService {
       final user = _auth.currentUser;
       if (user == null) throw Exception('User not authenticated');
 
+      print('🚀 Creating post for user: ${user.uid}');
+      print('📝 Content: ${content.substring(0, content.length > 50 ? 50 : content.length)}...');
+      print('🖼️ Has image: ${imageUrl != null}');
+
       // Get user data from Firestore
       final userDoc = await _firestore
           .collection(usersCollection)
@@ -73,25 +77,40 @@ class FirestoreService {
           .get();
 
       final userData = userDoc.data() ?? {};
-      final userName = userData['name'] ?? user.displayName ?? 'Unknown User';
+      final userName = userData['name'] ?? user.displayName ?? 'QuickPost User';
 
-      final post = Post(
-        id: '', // Will be set by Firestore
-        userId: user.uid,
-        userName: userName,
-        userEmail: user.email ?? '',
-        userPhotoUrl: user.photoURL,
-        content: content,
-        imageUrl: imageUrl,
-        timestamp: DateTime.now(),
-      );
+      // Create post data map
+      final postData = {
+        'userId': user.uid,
+        'userName': userName,
+        'userEmail': user.email ?? '',
+        'userPhotoUrl': user.photoURL,
+        'content': content,
+        'likes': <String>[],
+        'commentsCount': 0,
+        'timestamp': FieldValue.serverTimestamp(),
+        'createdAt': DateTime.now().toIso8601String(),
+        'metadata': <String, dynamic>{},
+      };
 
+      // Only add imageUrl if it's not null or empty
+      if (imageUrl != null && imageUrl.isNotEmpty) {
+        postData['imageUrl'] = imageUrl;
+        print('✅ Adding image URL to post');
+      } else {
+        print('📄 Creating text-only post');
+      }
+
+      print('💾 Saving to Firestore...');
       final docRef = await _firestore
           .collection(postsCollection)
-          .add(post.toMap());
+          .add(postData);
 
+      print('✅ Post created successfully with ID: ${docRef.id}');
       return docRef.id;
+      
     } catch (e) {
+      print('❌ Failed to create post: $e');
       throw Exception('Failed to create post: $e');
     }
   }
