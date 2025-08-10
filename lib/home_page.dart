@@ -1,9 +1,45 @@
 import 'package:flutter/material.dart';
-import 'components/qp_button.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'services/firestore_service.dart';
+import 'models/post_model.dart';
+import 'create_post_page.dart';
 
-class HomePage extends StatelessWidget {
+class HomePage extends StatefulWidget {
   const HomePage({super.key});
+
+  @override
+  State<HomePage> createState() => _HomePageState();
+}
+
+class _HomePageState extends State<HomePage> {
+  final FirestoreService _firestoreService = FirestoreService();
+  bool _hasCreatedSamples = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _createSamplePostsIfNeeded();
+  }
+
+  Future<void> _createSamplePostsIfNeeded() async {
+    if (!_hasCreatedSamples) {
+      try {
+        await _firestoreService.createSamplePosts();
+        setState(() => _hasCreatedSamples = true);
+      } catch (e) {
+        print('Sample posts already exist or error: $e');
+      }
+    }
+  }
+
+  Future<void> _navigateToCreatePost() async {
+    await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(builder: (context) => const CreatePostPage()),
+    );
+    // No need to refresh - StreamBuilder handles real-time updates!
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -38,34 +74,126 @@ class HomePage extends StatelessWidget {
           )
         ],
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          ...List.generate(3, (index) => _PostCard(index: index + 1)),
-        ],
+      body: StreamBuilder<List<Post>>(
+        stream: _firestoreService.getPostsStream(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(
+              child: CircularProgressIndicator(),
+            );
+          }
+
+          if (snapshot.hasError) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.error_outline,
+                    size: 64,
+                    color: Colors.red[400],
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Something went wrong',
+                    style: Theme.of(context).textTheme.headlineSmall,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    snapshot.error.toString(),
+                    style: Theme.of(context).textTheme.bodyMedium,
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed: () => setState(() {}),
+                    child: const Text('Retry'),
+                  ),
+                ],
+              ),
+            );
+          }
+
+          final posts = snapshot.data ?? [];
+
+          if (posts.isEmpty) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.post_add,
+                    size: 64,
+                    color: Theme.of(context).colorScheme.primary.withOpacity(0.5),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'No posts yet',
+                    style: Theme.of(context).textTheme.headlineSmall,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Be the first to share something!',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  ElevatedButton.icon(
+                    onPressed: _navigateToCreatePost,
+                    icon: const Icon(Icons.add),
+                    label: const Text('Create First Post'),
+                  ),
+                ],
+              ),
+            );
+          }
+
+          return RefreshIndicator(
+            onRefresh: () async {
+              // No need to manually refresh - StreamBuilder handles it!
+              await Future.delayed(const Duration(milliseconds: 500));
+            },
+            child: ListView.builder(
+              padding: const EdgeInsets.all(16),
+              itemCount: posts.length,
+              itemBuilder: (context, index) {
+                final post = posts[index];
+                return _PostCard(
+                  post: post,
+                  onLike: () => _firestoreService.toggleLike(post.id),
+                );
+              },
+            ),
+          );
+        },
       ),
       floatingActionButton: FloatingActionButton.extended(
         backgroundColor: Theme.of(context).colorScheme.primary,
         foregroundColor: isDark ? Colors.black : Colors.white,
         icon: const Icon(Icons.add),
         label: const Text('Post'),
-        onPressed: () {
-          // TODO: Navigate to new post creation.
-          ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Show create post screen!')));
-        },
+        onPressed: _navigateToCreatePost,
       ),
     );
   }
 }
 
 class _PostCard extends StatelessWidget {
-  final int index;
-  const _PostCard({required this.index});
+  final Post post;
+  final VoidCallback onLike;
+  
+  const _PostCard({
+    required this.post,
+    required this.onLike,
+  });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final currentUser = FirebaseAuth.instance.currentUser;
+    final isLiked = currentUser != null && post.isLikedBy(currentUser.uid);
+    
     return Card(
       margin: const EdgeInsets.only(bottom: 18),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
@@ -75,68 +203,185 @@ class _PostCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // User header
             Row(
               children: [
                 CircleAvatar(
                   radius: 26,
-                  backgroundImage: AssetImage(
-                    'assets/user_demo_${(index % 3) + 1}.png',
-                  ),
-                  // TODO: Dynamic images from backend
+                  backgroundImage: post.userPhotoUrl != null
+                      ? CachedNetworkImageProvider(post.userPhotoUrl!)
+                      : null,
                   backgroundColor: theme.colorScheme.secondary.withOpacity(0.15),
+                  child: post.userPhotoUrl == null
+                      ? Icon(
+                          Icons.person,
+                          color: theme.colorScheme.primary,
+                          size: 28,
+                        )
+                      : null,
                 ),
                 const SizedBox(width: 12),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('User$index',
-                        style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
-                    Text('@genzusername$index',
-                        style: theme.textTheme.labelMedium?.copyWith(color: theme.hintColor)),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        post.userName,
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      Row(
+                        children: [
+                          Text(
+                            post.userEmail,
+                            style: theme.textTheme.labelMedium?.copyWith(
+                              color: theme.hintColor,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          Text(
+                            ' • ${post.timeAgo}',
+                            style: theme.textTheme.labelMedium?.copyWith(
+                              color: theme.hintColor,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                PopupMenuButton<String>(
+                  icon: Icon(Icons.more_vert, color: theme.hintColor),
+                  onSelected: (value) {
+                    switch (value) {
+                      case 'report':
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Post reported')),
+                        );
+                        break;
+                      case 'share':
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Share functionality coming soon!')),
+                        );
+                        break;
+                    }
+                  },
+                  itemBuilder: (context) => [
+                    const PopupMenuItem(
+                      value: 'share',
+                      child: Row(
+                        children: [
+                          Icon(Icons.share, size: 20),
+                          SizedBox(width: 8),
+                          Text('Share'),
+                        ],
+                      ),
+                    ),
+                    const PopupMenuItem(
+                      value: 'report',
+                      child: Row(
+                        children: [
+                          Icon(Icons.report, size: 20),
+                          SizedBox(width: 8),
+                          Text('Report'),
+                        ],
+                      ),
+                    ),
                   ],
                 ),
-                const Spacer(),
-                Icon(Icons.more_vert, color: theme.hintColor)
               ],
             ),
-            const SizedBox(height: 13),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(14),
-              child: Image.network(
-                'https://source.unsplash.com/random/800x400?sig=$index',
-                fit: BoxFit.cover,
-                height: 182,
-                width: double.infinity,
-                loadingBuilder: (c, child, progress) => progress == null
-                    ? child
-                    : Center(child: CircularProgressIndicator()),
-                errorBuilder: (c, err, s) => Container(
-                  height: 180,
-                  color: theme.colorScheme.surfaceVariant,
-                  alignment: Alignment.center,
-                  child: const Icon(Icons.broken_image, size: 40, color: Colors.grey),
+            const SizedBox(height: 16),
+            
+            // Post content
+            Text(
+              post.content,
+              style: theme.textTheme.bodyLarge?.copyWith(fontSize: 16),
+            ),
+            
+            // Post image (if exists)
+            if (post.imageUrl != null) ...[
+              const SizedBox(height: 16),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(14),
+                child: CachedNetworkImage(
+                  imageUrl: post.imageUrl!,
+                  fit: BoxFit.cover,
+                  width: double.infinity,
+                  placeholder: (context, url) => Container(
+                    height: 200,
+                    color: theme.colorScheme.surfaceVariant,
+                    child: const Center(
+                      child: CircularProgressIndicator(),
+                    ),
+                  ),
+                  errorWidget: (context, url, error) => Container(
+                    height: 200,
+                    color: theme.colorScheme.surfaceVariant,
+                    alignment: Alignment.center,
+                    child: const Icon(
+                      Icons.broken_image,
+                      size: 40,
+                      color: Colors.grey,
+                    ),
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: 11),
-            Text(
-              'Here\'s a trendy post caption for Gen Z! #vibes #flutter',
-              style: theme.textTheme.bodyLarge,
-            ),
-            const SizedBox(height: 7),
+            ],
+            
+            const SizedBox(height: 16),
+            
+            // Actions row
             Row(
               children: [
                 IconButton(
-                  icon: Icon(Icons.favorite_outline, color: theme.colorScheme.primary),
-                  onPressed: () {},
+                  icon: Icon(
+                    isLiked ? Icons.favorite : Icons.favorite_outline,
+                    color: isLiked ? Colors.red : theme.colorScheme.primary,
+                  ),
+                  onPressed: onLike,
                 ),
-                const Text('124'),
-                const SizedBox(width: 14),
+                Text(
+                  '${post.likeCount}',
+                  style: TextStyle(
+                    color: isLiked ? Colors.red : theme.colorScheme.onSurface,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(width: 16),
                 IconButton(
-                  icon: Icon(Icons.chat_bubble_outline_rounded, color: theme.colorScheme.secondary),
-                  onPressed: () {},
+                  icon: Icon(
+                    Icons.chat_bubble_outline_rounded,
+                    color: theme.colorScheme.secondary,
+                  ),
+                  onPressed: () {
+                    // TODO: Navigate to comments
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Comments feature coming soon!')),
+                    );
+                  },
                 ),
-                const Text('12'),
+                Text(
+                  '${post.commentsCount}',
+                  style: TextStyle(
+                    color: theme.colorScheme.onSurface,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const Spacer(),
+                IconButton(
+                  icon: Icon(
+                    Icons.bookmark_outline,
+                    color: theme.hintColor,
+                  ),
+                  onPressed: () {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Bookmark feature coming soon!')),
+                    );
+                  },
+                ),
               ],
             ),
           ],

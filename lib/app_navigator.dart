@@ -4,6 +4,8 @@ import 'forgot_password_page.dart';
 import 'home_page.dart';
 import 'splash_page.dart';
 import 'login_page.dart';
+import 'phone_auth_page.dart';
+import 'create_post_page.dart';
 
 
 Route<dynamic>? quickpostRouteGenerator(RouteSettings settings) {
@@ -21,8 +23,14 @@ Route<dynamic>? quickpostRouteGenerator(RouteSettings settings) {
     case '/signup':
       page = const SignupPage();
       break;
+    case '/phone_auth':
+      page = const PhoneAuthPage();
+      break;
     case '/home':
       page = const HomePage();
+      break;
+    case '/create_post':
+      page = const CreatePostPage();
       break;
     default:
       page = const SplashPage();

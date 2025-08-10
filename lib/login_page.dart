@@ -169,6 +169,45 @@ class _LoginPageState extends State<LoginPage> {
                         ),
                       ],
                     ),
+                    
+                    // Divider
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 20),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Divider(
+                              color: Theme.of(context).colorScheme.onSurface.withOpacity(0.2),
+                              thickness: 1,
+                            ),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            child: Text(
+                              'OR',
+                              style: TextStyle(
+                                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                          Expanded(
+                            child: Divider(
+                              color: Theme.of(context).colorScheme.onSurface.withOpacity(0.2),
+                              thickness: 1,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    
+                    // Phone auth button
+                    QPButton(
+                      label: 'Continue with Phone',
+                      filled: false,
+                      icon: Icons.phone_rounded,
+                      onPressed: () => Navigator.pushReplacementNamed(context, '/phone_auth'),
+                    ),
                   ],
                 ),
               ),

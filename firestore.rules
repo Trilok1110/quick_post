@@ -1,0 +1,72 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Users collection rules
+    match /users/{userId} {
+      // Users can read and write their own document
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+      
+      // All authenticated users can read user profiles (for posts display)
+      allow read: if request.auth != null;
+    }
+    
+    // Posts collection rules
+    match /posts/{postId} {
+      // Anyone authenticated can read posts
+      allow read: if request.auth != null;
+      
+      // Users can create posts (with proper validation)
+      allow create: if request.auth != null
+        && request.resource.data.keys().hasAll(['userId', 'userName', 'userEmail', 'content', 'timestamp'])
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.content is string
+        && request.resource.data.content.size() > 0
+        && request.resource.data.content.size() <= 500
+        && request.resource.data.timestamp == request.time;
+      
+      // Users can update only their own posts (limited fields)
+      allow update: if request.auth != null
+        && request.auth.uid == resource.data.userId
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['content', 'imageUrl', 'updatedAt', 'likes']);
+      
+      // Users can delete only their own posts
+      allow delete: if request.auth != null && request.auth.uid == resource.data.userId;
+    }
+    
+    // Comments collection rules (for future implementation)
+    match /comments/{commentId} {
+      // Anyone authenticated can read comments
+      allow read: if request.auth != null;
+      
+      // Users can create comments
+      allow create: if request.auth != null
+        && request.resource.data.userId == request.auth.uid;
+      
+      // Users can update/delete only their own comments
+      allow update, delete: if request.auth != null 
+        && request.auth.uid == resource.data.userId;
+    }
+    
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+    
+    function validatePostData(data) {
+      return data.keys().hasAll(['userId', 'userName', 'userEmail', 'content', 'timestamp'])
+        && data.userId is string
+        && data.userName is string  
+        && data.userEmail is string
+        && data.content is string
+        && data.content.size() > 0
+        && data.content.size() <= 500
+        && data.timestamp is timestamp;
+    }
+  }
+}
