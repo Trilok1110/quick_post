@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:pin_code_fields/pin_code_fields.dart';
 import 'dart:async';
-import 'components/qp_button.dart';
+
+import '../components/qp_button.dart';
 
 class OTPVerificationPage extends StatefulWidget {
   final String verificationId;

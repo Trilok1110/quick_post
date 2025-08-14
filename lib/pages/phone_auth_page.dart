@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'components/qp_button.dart';
-import 'components/qp_text_field.dart';
+
+
+import '../components/qp_button.dart';
+import '../components/qp_text_field.dart';
 import 'otp_verification_page.dart';
 
 class PhoneAuthPage extends StatefulWidget {

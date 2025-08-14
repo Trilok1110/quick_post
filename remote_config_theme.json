@@ -1,0 +1,34 @@
+{
+  "parameters": {
+    "use_remote_theme": {
+      "defaultValue": { "value": "false" },
+      "valueType": "BOOLEAN"
+    },
+    "theme_mode": {
+      "defaultValue": { "value": "system" },
+      "valueType": "STRING",
+      "conditionalValues": {},
+      "description": "Allowed values: system, light, dark"
+    },
+    "seed_color": {
+      "defaultValue": { "value": "#4B69FF" },
+      "valueType": "STRING",
+      "description": "Hex color with leading #"
+    },
+    "surface_bg": {
+      "defaultValue": { "value": "#F7F8FA" },
+      "valueType": "STRING",
+      "description": "Light theme background"
+    },
+    "surface_bg_dark": {
+      "defaultValue": { "value": "#0E1116" },
+      "valueType": "STRING",
+      "description": "Dark theme background"
+    },
+    "font_family": {
+      "defaultValue": { "value": "Roboto" },
+      "valueType": "STRING",
+      "description": "Must be a bundled font"
+    }
+  }
+}

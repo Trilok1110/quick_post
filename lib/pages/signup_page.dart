@@ -1,18 +1,18 @@
-import 'package:flutter/material.dart';
-import 'components/qp_button.dart';
-import 'components/qp_text_field.dart';
-import 'components/qp_loading.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/material.dart';
+import '../components/qp_button.dart';
+import '../components/qp_text_field.dart';
 
-class LoginPage extends StatefulWidget {
-  const LoginPage({super.key});
+class SignupPage extends StatefulWidget {
+  const SignupPage({super.key});
 
   @override
-  State<LoginPage> createState() => _LoginPageState();
+  State<SignupPage> createState() => _SignupPageState();
 }
 
-class _LoginPageState extends State<LoginPage> {
+class _SignupPageState extends State<SignupPage> {
   final _formKey = GlobalKey<FormState>();
+  final _usernameController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isLoading = false;
@@ -20,6 +20,7 @@ class _LoginPageState extends State<LoginPage> {
 
   @override
   void dispose() {
+    _usernameController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
@@ -31,11 +32,11 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  Future<void> _onLogin() async {
+  Future<void> _onSignup() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _isLoading = true);
     try {
-      await FirebaseAuth.instance.signInWithEmailAndPassword(
+      await FirebaseAuth.instance.createUserWithEmailAndPassword(
         email: _emailController.text.trim(),
         password: _passwordController.text,
       );
@@ -43,15 +44,15 @@ class _LoginPageState extends State<LoginPage> {
       Navigator.pushReplacementNamed(context, '/home');
     } on FirebaseAuthException catch (e) {
       setState(() => _isLoading = false);
-      String message = e.code == 'user-not-found'
-          ? 'No user found for that email.'
-          : e.code == 'wrong-password'
-              ? 'Incorrect password.'
-              : e.message ?? 'Login failed.';
+      String message = e.code == 'email-already-in-use'
+          ? 'That email is already registered.'
+          : e.code == 'weak-password'
+              ? 'Password is too weak.'
+              : e.message ?? 'Sign up failed.';
       _showSnackbar(message);
     } catch (e) {
       setState(() => _isLoading = false);
-      _showSnackbar('Login failed. Please try again.');
+      _showSnackbar('Sign up failed. Please try again.');
     }
   }
 
@@ -66,7 +67,7 @@ class _LoginPageState extends State<LoginPage> {
           gradient: LinearGradient(
             colors: isDark
                 ? [const Color(0xFF001524), const Color(0xFF15616D)]
-                : [const Color(0xFF74F9FF), const Color(0xFF38A3A5)],
+                : [const Color(0xFFFFC6FF), const Color(0xFFA0E7E5)],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
@@ -89,12 +90,12 @@ class _LoginPageState extends State<LoginPage> {
                         children: [
                           ShaderMask(
                             shaderCallback: (r) => LinearGradient(
-                              colors: [Theme.of(context).colorScheme.primary, Theme.of(context).colorScheme.secondary],
+                              colors: [Theme.of(context).colorScheme.secondary, Theme.of(context).colorScheme.primary],
                             ).createShader(r),
-                            child: const Icon(Icons.flash_on_rounded, size: 72, color: Colors.white),
+                            child: const Icon(Icons.auto_awesome_rounded, size: 68, color: Colors.white),
                           ),
                           const SizedBox(height: 10),
-                          Text('QuickPost',
+                          Text('Create Account',
                               style: Theme.of(context)
                                   .textTheme
                                   .headlineMedium
@@ -109,6 +110,20 @@ class _LoginPageState extends State<LoginPage> {
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           QPTextField(
+                            controller: _usernameController,
+                            label: 'Username',
+                            icon: Icons.person_outline,
+                            keyboardType: TextInputType.name,
+                            autofillHints: const [AutofillHints.username],
+                            validator: (value) {
+                              if (value == null || value.trim().isEmpty) {
+                                return 'Enter your username';
+                              }
+                              return null;
+                            },
+                          ),
+                          const SizedBox(height: 14),
+                          QPTextField(
                             controller: _emailController,
                             label: 'Email',
                             icon: Icons.email_outlined,
@@ -118,95 +133,55 @@ class _LoginPageState extends State<LoginPage> {
                               if (value == null || value.trim().isEmpty) {
                                 return 'Enter your email';
                               }
-
-
+                              if (!RegExp(r'^[^@]+@[^@]+\.[^@]+').hasMatch(value)) {
+                                return 'Enter a valid email';
+                              }
                               return null;
                             },
                           ),
-                          const SizedBox(height: 16),
+                          const SizedBox(height: 14),
                           QPTextField(
                             controller: _passwordController,
                             label: 'Password',
                             icon: Icons.lock_outline,
                             obscureText: _obscurePassword,
-
-                            autofillHints: const [AutofillHints.password],
+                            autofillHints: const [AutofillHints.newPassword],
                             validator: (value) {
                               if (value == null || value.isEmpty) {
-                                return 'Enter your password';
+                                return 'Enter a password';
                               }
                               if (value.length < 6) {
                                 return 'Minimum 6 characters';
                               }
                               return null;
                             },
-
                             suffixIcon: IconButton(
                               icon: Icon(_obscurePassword ? Icons.visibility_off : Icons.visibility),
                               onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
                             ),
                           ),
-                          const SizedBox(height: 24),
+                          const SizedBox(height: 22),
                           QPButton(
-                            label: 'Log In',
+                            label: 'Sign Up',
                             loading: _isLoading,
-                            onPressed: _onLogin,
+                            onPressed: _onSignup,
                           ),
                         ],
                       ),
                     ),
                     const SizedBox(height: 20),
                     Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        TextButton(
-                          onPressed: () =>  Navigator.pushReplacementNamed(context, '/forget_password'),
-                          child: const Text('Forgot Password?'),
+                        Text(
+                          "Already have an account?",
+                          style: Theme.of(context).textTheme.bodyMedium,
                         ),
                         TextButton(
-                          onPressed: () => Navigator.pushReplacementNamed(context, '/signup'),
-                          child: const Text('Sign Up'),
+                          onPressed: () => Navigator.pushReplacementNamed(context, '/login'),
+                          child: const Text('Log In'),
                         ),
                       ],
-                    ),
-                    
-                    // Divider
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 20),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Divider(
-                              color: Theme.of(context).colorScheme.onSurface.withOpacity(0.2),
-                              thickness: 1,
-                            ),
-                          ),
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 16),
-                            child: Text(
-                              'OR',
-                              style: TextStyle(
-                                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                          Expanded(
-                            child: Divider(
-                              color: Theme.of(context).colorScheme.onSurface.withOpacity(0.2),
-                              thickness: 1,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    
-                    // Phone auth button
-                    QPButton(
-                      label: 'Continue with Phone',
-                      filled: false,
-                      icon: Icons.phone_rounded,
-                      onPressed: () => Navigator.pushReplacementNamed(context, '/phone_auth'),
                     ),
                   ],
                 ),

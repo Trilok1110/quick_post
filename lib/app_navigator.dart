@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
-import 'package:quickpost/signup_page.dart';
-import 'forgot_password_page.dart';
-import 'home_page.dart';
-import 'splash_page.dart';
-import 'login_page.dart';
-import 'phone_auth_page.dart';
-import 'create_post_page.dart';
+import 'package:quickpost/pages/login_page.dart';
+import 'package:quickpost/pages/phone_auth_page.dart';
+import 'package:quickpost/pages/settings_page.dart';
+import 'package:quickpost/pages/signup_page.dart';
+import 'package:quickpost/pages/splash_page.dart';
+import 'package:quickpost/pages/users_page.dart';
 
+import 'pages/create_post_page.dart';
+import 'pages/forgot_password_page.dart';
+import 'pages/home_page.dart';
 
 Route<dynamic>? quickpostRouteGenerator(RouteSettings settings) {
   Widget page;
@@ -32,6 +34,12 @@ Route<dynamic>? quickpostRouteGenerator(RouteSettings settings) {
     case '/create_post':
       page = const CreatePostPage();
       break;
+    case '/users':
+      page = const UsersPage();
+      break;
+    case '/settings':
+      page = const SettingsPage();
+      break;
     default:
       page = const SplashPage();
   }
@@ -44,7 +52,10 @@ Route<dynamic>? quickpostRouteGenerator(RouteSettings settings) {
       // Combo: scale in + fade in + slight upward slide
       var beginOffset = const Offset(0, 0.08);
       var endOffset = Offset.zero;
-      var tween = Tween(begin: beginOffset, end: endOffset).chain(CurveTween(curve: Curves.easeOutCubic));
+      var tween = Tween(
+        begin: beginOffset,
+        end: endOffset,
+      ).chain(CurveTween(curve: Curves.easeOutCubic));
       var fadeTween = Tween<double>(begin: 0.0, end: 1.0);
       var scaleTween = Tween<double>(begin: 0.96, end: 1.0);
       return SlideTransition(
@@ -75,4 +86,3 @@ class AppNavigator {
     Navigator.of(context).pop();
   }
 }
-
